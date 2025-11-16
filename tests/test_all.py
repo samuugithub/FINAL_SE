@@ -5,85 +5,107 @@ import types
 import pytest
 
 # ------------------------------------------------------------
-# ADD PROJECT ROOT TO PATH
+# ADD PROJECT ROOT TO PYTHONPATH
 # ------------------------------------------------------------
-ROOT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
-sys.path.insert(0, ROOT_DIR)
-
-print("PYTHONPATH:", ROOT_DIR)
+ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+sys.path.insert(0, ROOT)
+print("PYTHONPATH:", ROOT)
 
 
 # ------------------------------------------------------------
-# STUB ALL EXTERNAL PACKAGES BEFORE IMPORTING PROJECT MODULES
+# UNIVERSAL STUB CREATOR
 # ------------------------------------------------------------
-
-def stub_module(name, obj=None):
-    """Register a stub module in sys.modules"""
+def stub_module(name, attrs=None):
     m = types.ModuleType(name)
-    if obj:
-        for k, v in obj.items():
+    if attrs:
+        for k, v in attrs.items():
             setattr(m, k, v)
     sys.modules[name] = m
     return m
 
-# --- psutil ---
+
+# ------------------------------------------------------------
+# STUB external libraries BEFORE importing project code
+# ------------------------------------------------------------
+
+# --- psutil -------------------------------------------------
 if "psutil" not in sys.modules:
     stub_module("psutil", {
         "cpu_percent": lambda interval=1: 0.0,
         "virtual_memory": lambda: types.SimpleNamespace(percent=0.0),
-        "disk_usage": lambda p: types.SimpleNamespace(percent=0.0)
+        "disk_usage": lambda path: types.SimpleNamespace(percent=0.0),
     })
 
-# --- dotenv ---
+# --- dotenv -------------------------------------------------
 if "dotenv" not in sys.modules:
     stub_module("dotenv", {"load_dotenv": lambda *a, **k: None})
 
-# --- plyer ---
+# --- plyer --------------------------------------------------
 if "plyer" not in sys.modules:
-    stub_module("plyer", {"notification": types.SimpleNamespace(notify=lambda **k: None)})
+    stub_module("plyer", {
+        "notification": types.SimpleNamespace(notify=lambda **k: None)
+    })
 
-# --- pytz ---
+# --- pytz ---------------------------------------------------
 if "pytz" not in sys.modules:
-    stub_module("pytz", {"timezone": lambda x: None})
+    stub_module("pytz", {"timezone": lambda *_: None})
 
-# --- twilio ---
+# --- twilio -------------------------------------------------
 if "twilio" not in sys.modules:
     rest = types.SimpleNamespace(Client=lambda *a, **k: None)
     t = stub_module("twilio", {"rest": rest})
     sys.modules["twilio.rest"] = rest
 
-# --- mysql.connector ---
+# --- mysql.connector ----------------------------------------
 if "mysql" not in sys.modules:
     mysql_mod = stub_module("mysql")
     mysql_connector = types.SimpleNamespace(connect=lambda *a, **k: None)
-    sys.modules["mysql.connector"] = mysql_connector
     mysql_mod.connector = mysql_connector
+    sys.modules["mysql.connector"] = mysql_connector
 
-# --- flask_sqlalchemy ---
+# --- flask_sqlalchemy ---------------------------------------
 if "flask_sqlalchemy" not in sys.modules:
     class FakeDB:
         def __init__(self, *a, **k):
+            # Column types
             self.Column = lambda *a, **k: None
             self.Integer = int
+            self.BigInteger = int          # FIXED 🔥
             self.String = str
             self.Float = float
             self.Boolean = bool
             self.Text = str
+            self.DateTime = str
+            self.Date = str
+            self.JSON = dict
+
+            # relationships + FKs
             self.ForeignKey = lambda *a, **k: None
-            self.TIMESTAMP = None
-            self.func = types.SimpleNamespace(current_timestamp=lambda: None)
             self.relationship = lambda *a, **k: None
-            self.Model = type("Model", (), {})
+
+            # TIMESTAMP + func
+            self.TIMESTAMP = str
+            self.func = types.SimpleNamespace(current_timestamp=lambda: None)
+
+            # text()
+            self.text = lambda t: t
+
+            # Fake session
             self.session = types.SimpleNamespace(
                 add=lambda *a, **k: None,
                 commit=lambda: None,
-                execute=lambda *a, **k: None
+                execute=lambda *a, **k: None,
             )
-            self.text = lambda t: t
+
+            # Base model class
+            class Model: pass
+            self.Model = Model
+
+        def init_app(self, app): pass
 
     stub_module("flask_sqlalchemy", {"SQLAlchemy": FakeDB})
 
-# --- flask (fallback only if missing) ---
+# --- flask fallback -----------------------------------------
 try:
     import flask
 except Exception:
@@ -91,12 +113,13 @@ except Exception:
         "Flask": lambda *a, **k: types.SimpleNamespace(
             route=lambda *a, **k: (lambda f: f),
             url_map=types.SimpleNamespace(iter_rules=lambda: []),
-            run=lambda *a, **k: None
+            run=lambda *a, **k: None,
         )
     })
 
+
 # ------------------------------------------------------------
-# NOW SAFE TO IMPORT PROJECT MODULES
+# NOW IMPORT YOUR PROJECT
 # ------------------------------------------------------------
 import Agent.agent as agent
 import backend.app as app_mod
@@ -106,13 +129,14 @@ from backend.utils import notifier as notifier_mod
 
 
 # ------------------------------------------------------------
-# TESTS BEGIN BELOW
+# TESTS
 # ------------------------------------------------------------
 
 def test_collect_metrics_structure(monkeypatch):
     monkeypatch.setattr(agent.psutil, "cpu_percent", lambda interval=1: 12.5)
     monkeypatch.setattr(agent.psutil, "virtual_memory", lambda: types.SimpleNamespace(percent=45.0))
-    monkeypatch.setattr(agent.psutil, "disk_usage", lambda path: types.SimpleNamespace(percent=70.0))
+    monkeypatch.setattr(agent.psutil, "disk_usage",
+                        lambda path: types.SimpleNamespace(percent=70.0))
 
     if hasattr(agent, "np") and hasattr(agent.np, "random"):
         monkeypatch.setattr(agent.np.random, "uniform", lambda a, b: 2.5)
@@ -124,7 +148,7 @@ def test_collect_metrics_structure(monkeypatch):
 
 
 def test_auto_load_model_no_files(monkeypatch):
-    monkeypatch.setattr(agent.os.path, "exists", lambda p: False)
+    monkeypatch.setattr(agent.os.path, "exists", lambda _: False)
     model, scaler = agent.auto_load_model()
     assert model is None and scaler is None
 
@@ -136,7 +160,7 @@ class FakeSession:
         self.added.append(obj)
     def commit(self):
         pass
-    def execute(self, text, params=None):
+    def execute(self, *a, **k):
         pass
 
 
@@ -162,12 +186,11 @@ def test_make_prediction_no_model(monkeypatch):
     fake_db = types.SimpleNamespace(session=FakeSession(), text=lambda t: t)
     monkeypatch.setattr(agent, "db", fake_db)
 
-    metrics = {
-        "CPU_Usage": 10, "Memory_Usage": 20, "Disk_IO": 5,
-        "Network_Latency": 30, "Error_Rate": 0
-    }
+    metrics = {"CPU_Usage": 10, "Memory_Usage": 20, "Disk_IO": 5,
+               "Network_Latency": 30, "Error_Rate": 0}
 
     agent.make_prediction(metrics, DummyAdmin(), DummySystem(), None, None)
+
     assert len(fake_db.session.added) >= 2
 
 
@@ -175,12 +198,12 @@ def test_make_prediction_with_model(monkeypatch):
     fake_db = types.SimpleNamespace(session=FakeSession(), text=lambda t: t)
     monkeypatch.setattr(agent, "db", fake_db)
 
-    metrics = {
-        "CPU_Usage": 90, "Memory_Usage": 85, "Disk_IO": 80,
-        "Network_Latency": 5, "Error_Rate": 1
-    }
+    metrics = {"CPU_Usage": 90, "Memory_Usage": 85, "Disk_IO": 80,
+               "Network_Latency": 5, "Error_Rate": 1}
 
-    agent.make_prediction(metrics, DummyAdmin(), DummySystem(), DummyModel(), DummyScaler())
+    agent.make_prediction(metrics, DummyAdmin(), DummySystem(),
+                          DummyModel(), DummyScaler())
+
     assert len(fake_db.session.added) >= 2
 
 
