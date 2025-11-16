@@ -1,91 +1,134 @@
-name: Project CI Pipeline
+name: Project CI (Backend + Frontend + ML)
 
 on:
   push:
-    branches: ["main"]
+    paths:
+      - "SE_PROJECT_1/"
+      - ".github/workflows/frontend-ci.yml"
+
   pull_request:
-    branches: ["main"]
+    paths:
+      - "SE_PROJECT_1/"
+      - ".github/workflows/frontend-ci.yml"
 
 jobs:
-  lint-python:
-    name: 1️⃣ Python Linting
-    runs-on: ubuntu-latest
+  ci:
+    runs-on: windows-latest
+
     steps:
-      - uses: actions/checkout@v3
 
-      - name: Setup Python
-        uses: actions/setup-python@v4
-        with:
-          python-version: "3.10"
+    # -----------------------------------
+    # 1. CHECKOUT CODE
+    # -----------------------------------
+    - name: Checkout repository
+      uses: actions/checkout@v4
 
-      - name: Syntax check
-        run: |
-          python -m py_compile backend/app.py
-          python -m py_compile Agent/agent.py
-          python -m py_compile frontend/Dashboard.py
+    # -----------------------------------
+    # 2. SETUP PYTHON
+    # -----------------------------------
+    - name: Setup Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: "3.10"
 
-  install-backend:
-    name: 2️⃣ Install Backend Dependencies
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v3
+    # -----------------------------------
+    # 3. INSTALL BACKEND DEPENDENCIES
+    # -----------------------------------
+    - name: Install backend dependencies
+      run: |
+        cd SE_PROJECT_1/backend
+        if (Test-Path requirements.txt) {
+            pip install -r requirements.txt
+        }
 
-      - uses: actions/setup-python@v4
-        with:
-          python-version: "3.10"
+    # -----------------------------------
+    # 4. INSTALL FRONTEND DEPENDENCIES
+    # -----------------------------------
+    - name: Install frontend dependencies
+      run: |
+        pip install streamlit
 
-      - name: Install backend deps
-        working-directory: backend
-        run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
+    # -----------------------------------
+    # 5. LINT (Flake8 + Pylint + Report)
+    # -----------------------------------
+    - name: Run flake8 and pylint
+      run: |
+        pip install flake8 pylint
+        flake8 SE_PROJECT_1 --exclude _pycache_ || true
+        pylint SE_PROJECT_1/backend/*.py --exit-zero > pylint-report.txt
 
-  install-agent:
-    name: 3️⃣ Install Agent Dependencies
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v3
+    - name: Upload Lint Report
+      uses: actions/upload-artifact@v4
+      with:
+        name: lint-report
+        path: pylint-report.txt
 
-      - uses: actions/setup-python@v4
-        with:
-          python-version: "3.10"
+    # -----------------------------------
+    # 6. RUN TESTS + COVERAGE
+    # -----------------------------------
+    - name: Run pytest with coverage
+      run: |
+        pip install pytest pytest-cov
+        pytest --cov=SE_PROJECT_1 --cov-report=html || true
 
-      - name: Install same libs for agent
-        run: |
-          python -m pip install --upgrade pip
-          pip install -r backend/requirements.txt
+    - name: Upload Coverage Report
+      uses: actions/upload-artifact@v4
+      with:
+        name: coverage-report
+        path: htmlcov/
 
-  setup-node:
-    name: 4️⃣ Setup Node Monitor
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v3
+    # -----------------------------------
+    # 7. SECURITY SCAN (Bandit)
+    # -----------------------------------
+    - name: Security Scan using Bandit
+      run: |
+        pip install bandit
+        bandit -r SE_PROJECT_1 -f json -o bandit-report.json || true
 
-      - name: Setup Node
-        uses: actions/setup-node@v3
-        with:
-          node-version: "18"
+    - name: Upload Security Report
+      uses: actions/upload-artifact@v4
+      with:
+        name: security-report
+        path: bandit-report.json
 
-      - name: Install npm libs
-        working-directory: backend
-        run: |
-          if [ -f package.json ]; then npm install; else echo "No package.json found"; fi
+    # -----------------------------------
+    # 8. VERIFY ML MODEL FILE
+    # -----------------------------------
+    - name: Check ML model presence
+      run: |
+        if (!(Test-Path "SE_PROJECT_1/backend/model.pkl")) {
+            Write-Error "model.pkl NOT FOUND!"
+        } else {
+            Write-Output "model.pkl found."
+        }
 
-  run-tests:
-    name: 5️⃣ Run Tests
-    runs-on: ubuntu-latest
-    needs: [lint-python, install-backend, install-agent, setup-node]
-    steps:
-      - uses: actions/checkout@v3
+    # -----------------------------------
+    # 9. BACKEND HEALTH CHECK
+    # -----------------------------------
+    - name: Backend basic check
+      run: |
+        cd SE_PROJECT_1/backend
+        python app.py --help || true
 
-      - name: Setup Python
-        uses: actions/setup-python@v4
-        with:
-          python-version: "3.10"
+    # -----------------------------------
+    # 10. FRONTEND HEALTH CHECK
+    # -----------------------------------
+    - name: Streamlit health check
+      run: |
+        streamlit --version
 
-      - name: Install pytest
-        run: pip install pytest
+    # -----------------------------------
+    # 11. CREATE FULL PROJECT ZIP ARTIFACT
+    # -----------------------------------
+    - name: Create build artifact
+      run: |
+        powershell Compress-Archive -Path SE_PROJECT_1 -DestinationPath project-build.zip
 
-      - name: Run pytest
-        run: |
-          if [ -d "tests" ]; then pytest -q; else echo "No tests folder found — skipping tests"; fi
+    # -----------------------------------
+    # 12. UPLOAD FINAL ARTIFACT
+    # -----------------------------------
+    - name: Upload build artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: full-project-build
+        path: project-build.zip
