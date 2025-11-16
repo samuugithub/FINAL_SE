@@ -1,5 +1,6 @@
 flask
 flask-cors
+flask_sqlalchemy
 mysql-connector-python
 numpy
 pandas
@@ -8,4 +9,5 @@ joblib
 requests
 pytest
 psutil
+
 
