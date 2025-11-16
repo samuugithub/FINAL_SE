@@ -7,3 +7,5 @@ scikit-learn
 joblib
 requests
 pytest
+psutil
+
