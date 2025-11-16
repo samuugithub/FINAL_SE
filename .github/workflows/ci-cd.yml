@@ -78,6 +78,14 @@ jobs:
     steps:
       - uses: actions/checkout@v3
 
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.10"
+
+      - name: Install pytest
+        run: pip install pytest
+
       - name: Run pytest
         run: |
           if [ -d "tests" ]; then pytest -q; else echo "No tests folder found — skipping tests"; fi
