@@ -1,4 +1,3 @@
-# tests/test_all.py
 import sys
 import os
 import types
@@ -70,7 +69,7 @@ if "flask_sqlalchemy" not in sys.modules:
             # Column types
             self.Column = lambda *a, **k: None
             self.Integer = int
-            self.BigInteger = int          # FIXED 🔥
+            self.BigInteger = int
             self.String = str
             self.Float = float
             self.Boolean = bool
@@ -119,12 +118,12 @@ except Exception:
 
 
 # ------------------------------------------------------------
-# NOW IMPORT YOUR PROJECT
+# NOW IMPORT YOUR PROJECT (FIXED IMPORT)
 # ------------------------------------------------------------
 import Agent.agent as agent
 import backend.app as app_mod
 import backend.train_model as train_mod
-from backend.database import models as db_models
+from database import models as db_models        # <-- FIXED
 from backend.utils import notifier as notifier_mod
 
 
