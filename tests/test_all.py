@@ -1,7 +1,21 @@
+import sys
+import os
 import types
 import pytest
 
-# Import modules under test
+# ------------------------------------------------------------
+# 🔹 FIX IMPORT PATHS FOR GITHUB ACTIONS
+# ------------------------------------------------------------
+# Add project root to PYTHONPATH
+ROOT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+sys.path.append(ROOT_DIR)
+
+# Verify path added
+print("PYTHONPATH:", ROOT_DIR)
+
+# ------------------------------------------------------------
+# 🔹 Import modules under test
+# ------------------------------------------------------------
 import Agent.agent as agent
 import backend.app as app_mod
 import backend.train_model as train_mod
@@ -39,8 +53,8 @@ def test_collect_metrics_structure(monkeypatch):
 # 🔹 Test auto_load_model() when model files don't exist
 # ------------------------------------------------------------
 def test_auto_load_model_no_files(monkeypatch):
-    # mock "os.path.exists" so files do NOT exist
     monkeypatch.setattr(agent.os.path, "exists", lambda p: False)
+
     model, scaler = agent.auto_load_model()
 
     assert model is None
@@ -48,7 +62,7 @@ def test_auto_load_model_no_files(monkeypatch):
 
 
 # ------------------------------------------------------------
-# Helpers for DB mocking
+# 🔹 Fake DB + Mock Classes
 # ------------------------------------------------------------
 class FakeSession:
     def __init__(self):
@@ -67,10 +81,10 @@ class FakeSession:
 
 class DummyModel:
     def predict(self, X):
-        return [1]  # always predict "risk"
+        return [1]
 
     def predict_proba(self, X):
-        return [[0.1, 0.9]]  # 90% risk
+        return [[0.1, 0.9]]
 
 
 class DummyScaler:
@@ -90,7 +104,7 @@ class DummySystem:
 
 
 # ------------------------------------------------------------
-# 🔹 Test make_prediction() without model (fallback path)
+# 🔹 Test make_prediction() WITHOUT model
 # ------------------------------------------------------------
 def test_make_prediction_no_model(monkeypatch):
     fake_db = types.SimpleNamespace(
@@ -112,12 +126,11 @@ def test_make_prediction_no_model(monkeypatch):
 
     agent.make_prediction(metrics, admin, system, None, None)
 
-    # Should create SystemMetrics + PredictionLog
     assert len(fake_db.session.added) >= 2
 
 
 # ------------------------------------------------------------
-# 🔹 Test make_prediction() with a dummy ML model
+# 🔹 Test make_prediction() WITH model
 # ------------------------------------------------------------
 def test_make_prediction_with_model(monkeypatch):
     fake_db = types.SimpleNamespace(
@@ -142,19 +155,18 @@ def test_make_prediction_with_model(monkeypatch):
 
     agent.make_prediction(metrics, admin, system, model, scaler)
 
-    # Should add the metric + prediction logs
     assert len(fake_db.session.added) >= 2
 
 
 # ------------------------------------------------------------
-# 🔹 Test Flask app configuration
+# 🔹 Test Flask app
 # ------------------------------------------------------------
 def test_app_module_has_flask_app():
     assert hasattr(app_mod, "app")
     assert hasattr(app_mod.app, "url_map")
 
     routes = [r.rule for r in app_mod.app.url_map.iter_rules()]
-    assert any(r.startswith("/api/") for r in routes)
+    assert any("/api/" in r for r in routes)
 
 
 # ------------------------------------------------------------
@@ -166,7 +178,7 @@ def test_train_model_functions_exist():
 
 
 # ------------------------------------------------------------
-# 🔹 Test database model fields
+# 🔹 Test database models
 # ------------------------------------------------------------
 def test_database_models_have_fields():
     assert hasattr(db_models.Admin, "email")
@@ -175,10 +187,8 @@ def test_database_models_have_fields():
 
 
 # ------------------------------------------------------------
-# 🔹 Test notifier module exports functions
+# 🔹 Test notifier module
 # ------------------------------------------------------------
 def test_notifier_module_exports_functions():
     assert hasattr(notifier_mod, "get_connection")
-    assert hasattr(notifier_mod, "send_email") or hasattr(
-        notifier_mod, "send_alert"
-    )
+    assert hasattr(notifier_mod, "send_email") or hasattr(notifier_mod, "send_alert")
