@@ -1,6 +1,7 @@
 flask
-flask-cors
+Flask-Cors
 flask_sqlalchemy
+SQLAlchemy
 mysql-connector-python
 numpy
 pandas
@@ -8,8 +9,8 @@ scikit-learn
 joblib
 requests
 pytest
+pytest-mock
 psutil
 python-dotenv
 plyer
-
-
+twilio
