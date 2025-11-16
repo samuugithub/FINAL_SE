@@ -9,5 +9,6 @@ joblib
 requests
 pytest
 psutil
+python-dotenv
 
 
