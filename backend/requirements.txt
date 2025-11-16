@@ -10,5 +10,6 @@ requests
 pytest
 psutil
 python-dotenv
+plyer
 
 
